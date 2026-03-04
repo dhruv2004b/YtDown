@@ -65,7 +65,7 @@ export const getVideoInfo = async (req, res) => {
       });
     }
 
-    const process = spawn("yt-dlp", [
+    const yt = spawn("yt-dlp", [
       url,
       "--dump-single-json",
       "--no-warnings",
@@ -73,25 +73,47 @@ export const getVideoInfo = async (req, res) => {
     ]);
 
     let data = "";
+    let errorData = "";
 
-    process.stdout.on("data", chunk => {
+    yt.stdout.on("data", chunk => {
       data += chunk.toString();
     });
 
-    process.stderr.on("data", err => {
+    yt.stderr.on("data", err => {
+      errorData += err.toString();
       console.log("yt-dlp:", err.toString());
     });
 
-    process.on("close", () => {
+    yt.on("close", (code) => {
 
-      const info = JSON.parse(data);
+      if (code !== 0) {
+        return res.status(500).json({
+          success: false,
+          message: "yt-dlp failed",
+          error: errorData
+        });
+      }
 
-      res.json({
-        success: true,
-        title: info.title,
-        thumbnail: info.thumbnail,
-        duration: info.duration
-      });
+      try {
+
+        const info = JSON.parse(data);
+
+        res.json({
+          success: true,
+          title: info.title,
+          thumbnail: info.thumbnail,
+          duration: info.duration,
+          uploader: info.uploader
+        });
+
+      } catch (parseError) {
+
+        res.status(500).json({
+          success: false,
+          message: "Failed to parse yt-dlp response"
+        });
+
+      }
 
     });
 
