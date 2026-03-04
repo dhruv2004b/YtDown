@@ -51,63 +51,49 @@ export const downloadVideo = async (req, res) => {
   }
 };
 
+
 export const getVideoInfo = async (req, res) => {
+
   try {
 
-    if (!req.body?.url) {
+    const { url } = req.body;
+
+    if (!url) {
       return res.status(400).json({
         success: false,
         message: "Video URL required"
       });
     }
 
-    const { url } = req.body;
+    const process = spawn("yt-dlp", [
+      url,
+      "--dump-single-json",
+      "--no-warnings",
+      "--no-call-home"
+    ]);
 
-    const videoId = new URL(url).searchParams.get("v");
+    let data = "";
 
-    // check cache
-    const cached = videoCache.get(videoId);
-    if (cached) {
-      return res.json(cached);
-    }
-
-    const info = await yt(url, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noCallHome: true
+    process.stdout.on("data", chunk => {
+      data += chunk.toString();
     });
 
-    const formats = Object.values(
-      info.formats
-        .filter(f => f.ext === "mp4" && f.height)
-        .reduce((acc, cur) => {
+    process.stderr.on("data", err => {
+      console.log("yt-dlp:", err.toString());
+    });
 
-          if (!acc[cur.height]) {
-            acc[cur.height] = {
-              quality: `${cur.height}p`,
-              size: cur.filesize
-                ? (cur.filesize / 1024 / 1024).toFixed(2) + " MB"
-                : "Unknown",
-              url: cur.url
-            };
-          }
+    process.on("close", () => {
 
-          return acc;
+      const info = JSON.parse(data);
 
-        }, {})
-    ).sort((a, b) => parseInt(a.quality) - parseInt(b.quality));
+      res.json({
+        success: true,
+        title: info.title,
+        thumbnail: info.thumbnail,
+        duration: info.duration
+      });
 
-    const response = {
-      success: true,
-      title: info.title,
-      thumbnail: info.thumbnail,
-      duration: info.duration,
-      formats
-    };
-
-    videoCache.set(videoId, response);
-
-    res.json(response);
+    });
 
   } catch (error) {
 
@@ -117,7 +103,9 @@ export const getVideoInfo = async (req, res) => {
       success: false,
       message: "Failed to process video"
     });
+
   }
+
 };
 
 
